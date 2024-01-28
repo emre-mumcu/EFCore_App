@@ -32,7 +32,7 @@ namespace EFCore_App.AppLib.Data
 
             modelBuilder.ApplyConfigurationsFromAssembly(System.Reflection.Assembly.GetExecutingAssembly());
 
-            modelBuilder.SeedData();
+            // modelBuilder.SeedData();
         }
 
 

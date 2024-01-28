@@ -1,10 +1,27 @@
 using EFCore_App.AppLib.Data;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
 
-    builder.Services.AddMvc().AddRazorRuntimeCompilation();
+    builder.Services.AddHttpContextAccessor();
+
+    builder.Services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();
+
+    IMvcBuilder mvcBuilder = builder.Services.AddMvc();
+
+    mvcBuilder.AddSessionStateTempDataProvider();
+
+    if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
+    {
+        mvcBuilder.AddRazorRuntimeCompilation();
+    }
+
+    mvcBuilder.AddJsonOptions(options => options.JsonSerializerOptions.WriteIndented = true);
+
+    builder.Services.AddDataProtection();
 
     {   // DbContext:
 
@@ -23,14 +40,26 @@ try
 
     var app = builder.Build();
 
-    App.Instance.DataConfiguration = new ConfigurationBuilder()
-        .SetBasePath(Directory.GetCurrentDirectory())
-        .AddJsonFile("data.json", true)
-        .Build();
-
     App.Instance.WebHostEnvironment = app.Services.GetRequiredService<IWebHostEnvironment>();
 
-    app.MapDefaultControllerRoute();
+    {
+        app.UseHttpsRedirection();
+
+        app.UseStaticFiles();
+
+        app.UseRouting();
+
+        app.UseAuthorization();
+
+        app.MapDefaultControllerRoute();
+
+        app.UseForwardedHeaders(new ForwardedHeadersOptions
+        {
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+        });
+    }
+
+    await DbContextExt.SeedData(app.Services);
 
     app.Run();
 }
@@ -50,18 +79,21 @@ catch (Exception ex)
     }).Build().Run();
 }
 
-
-
-
 public sealed class App
 {
     private static readonly Lazy<App> appInstance = new Lazy<App>(() => new App());
 
     public static App Instance { get { return appInstance.Value; } }
 
-    private App() { }
+    private App()
+    {
+        DataConfiguration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("data.json", true)
+            .Build();
+    }
 
-    public IConfiguration? DataConfiguration { get; set; }
+    public IConfiguration DataConfiguration { get; set; }
 
     public IWebHostEnvironment? WebHostEnvironment { get; set; }
 }

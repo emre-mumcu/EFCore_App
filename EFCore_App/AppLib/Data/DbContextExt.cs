@@ -54,12 +54,23 @@ namespace EFCore_App.AppLib.Data
 
                 if (context.Database.GetPendingMigrations().Any()) await context.Database.MigrateAsync();
 
+
+                /// Normally the DbContext takes care of the transaction, but in this case (SET IDENTITY_INSERT) 
+                /// manually taking care of the transactions are required. 
+                /// Database context will generate a BEGIN TRAN after the SET IDENTITY_INSERT is issued.
+                /// This will make transaction's inserts to fail since IDENTITY_INSERT seems to affect tables at session/transaction level.
+                /// So, everything must be wrapped in a single transaction to work properly.
+                using var transaction = context.Database.BeginTransaction();
+
                 if (!context.Iller.Any())
                 {
                     var iller = JsonConvert.DeserializeObject<List<Il>>(File.ReadAllText(
                         Path.Combine(Environment.CurrentDirectory, "wwwroot", "static", "iller.json")));
                     context.Iller.AddRange(iller!);
+
+                    await context.EnableIdentityInsert<Il>();
                     await context.SaveChangesAsync();
+                    await context.DisableIdentityInsert<Il>();
                 }
 
                 if (!context.Ilceler.Any())
@@ -67,7 +78,10 @@ namespace EFCore_App.AppLib.Data
                     var ilceler = JsonConvert.DeserializeObject<List<Ilce>>(File.ReadAllText(
                         Path.Combine(Environment.CurrentDirectory, "wwwroot", "static", "ilceler.json")));
                     context.Ilceler.AddRange(ilceler!);
+
+                    await context.EnableIdentityInsert<Ilce>();
                     await context.SaveChangesAsync();
+                    await context.DisableIdentityInsert<Ilce>();
                 }
 
                 if (!context.SemtBucakBeldeler.Any())
@@ -75,7 +89,10 @@ namespace EFCore_App.AppLib.Data
                     var sbbler = JsonConvert.DeserializeObject<List<SemtBucakBelde>>(File.ReadAllText(
                         Path.Combine(Environment.CurrentDirectory, "wwwroot", "static", "semtbucakbeldeler.json")));
                     context.SemtBucakBeldeler.AddRange(sbbler!);
+
+                    await context.EnableIdentityInsert<SemtBucakBelde>();
                     await context.SaveChangesAsync();
+                    await context.DisableIdentityInsert<SemtBucakBelde>();
                 }
 
                 if (!context.Mahalleler.Any())
@@ -83,9 +100,25 @@ namespace EFCore_App.AppLib.Data
                     var mahalleler = JsonConvert.DeserializeObject<List<Mahalle>>(File.ReadAllText(
                         Path.Combine(Environment.CurrentDirectory, "wwwroot", "static", "mahalleler.json")));
                     context.Mahalleler.AddRange(mahalleler!);
+
+                    await context.EnableIdentityInsert<Mahalle>();
                     await context.SaveChangesAsync();
+                    await context.DisableIdentityInsert<Mahalle>();
                 }
+
+                transaction.Commit();
             }
+        }
+
+        public static Task EnableIdentityInsert<T>(this DbContext context) => SetIdentityInsert<T>(context, enable: true);
+        public static Task DisableIdentityInsert<T>(this DbContext context) => SetIdentityInsert<T>(context, enable: false);
+        private static Task SetIdentityInsert<T>(DbContext context, bool enable)
+        {
+            var entityType = context.Model.FindEntityType(typeof(T))!;
+            var value = enable ? "ON" : "OFF";
+#pragma warning disable EF1002 // Risk of vulnerability to SQL injection.
+            return context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {entityType.GetSchema()}.{entityType.GetTableName()} {value}");
+#pragma warning restore EF1002 // Risk of vulnerability to SQL injection.
         }
     }
 }
