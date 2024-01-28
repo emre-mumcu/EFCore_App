@@ -1,0 +1,8 @@
+{
+  "Application": {
+    
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost; Database=SamplDB; Trusted_Connection=True; TrustServerCertificate=Yes; Encrypt=false"
+  }
+}
